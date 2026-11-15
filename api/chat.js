@@ -1,5 +1,5 @@
 // GEARO free backend: Google Gemini (free tier) for answers + Tavily (free tier) for live web search.
-const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
 const hits = new Map();
 let goodModel = null;
 function limited(ip) {
@@ -79,7 +79,7 @@ module.exports = async (req, res) => {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
     const raw = Array.isArray(body.messages) ? body.messages.slice(-20) : [];
     const msgs = raw.filter(m => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
-      .map(m => ({ role: m.role, text: m.content.slice(0, 30000) }));
+      .map(m => ({ role: m.role, text: m.content.slice(0, 60000) }));
     if (!msgs.length || msgs[msgs.length - 1].role !== "user") return res.status(400).json({ error: "Bad request" });
     const imgs = (Array.isArray(body.images) ? body.images : [])
       .filter(i => i && ALLOWED.includes(i.type) && typeof i.data === "string").slice(0, 3);
