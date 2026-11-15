@@ -113,7 +113,6 @@ textarea{flex:1;resize:none;max-height:110px;border:0;outline:0;background:trans
 <input type="file" id="bin" accept="image/*" hidden>
 <input type="file" id="tin" accept="image/*" hidden>
 <script>
-// Character background images are injected here as data URIs: {luffy:"data:image/...", ...}
 const IMGS={"luffy": "bg/luffy.jpg", "zoro": "bg/zoro.jpg", "sanji": "bg/sanji.jpg", "shanks": "bg/shanks.jpg", "law": "bg/law.jpg", "doflamingo": "bg/doflamingo.jpg"};const POS={"luffy": "50%", "zoro": "55%", "sanji": "72%", "shanks": "50%", "law": "50%", "doflamingo": "45%"};
 const T=[
 {id:"luffy",n:"Luffy",c:"Dream bigger!",a:"#ffd166",bg:"radial-gradient(circle at 50% 70%,#fff3b0 0 8%,#ffd166 9% 18%,transparent 19%),linear-gradient(#e63946,#ff8c42 58%,#1d4e89 59%,#0b2545)"},
@@ -132,7 +131,7 @@ root.setProperty("--dim",ls.g("gearo-dim")||".1");
 
 function theme(id){
   const t=T.find(x=>x.id===id)||T[0];cur=t.id;root.setProperty("--acc",t.a);
-  const im=ls.g("gearo-img-"+t.id)||IMGS[t.id];bg.style.background=custom?"center/cover url("+custom+")":im?(POS[t.id]||"50%")+" center/cover url("+im+")":t.bg;
+  const im=ls.g("gearo-img-"+t.id)||IMGS[t.id];bg.style.background=custom?"center/cover url("+custom+")":im?(POS[t.id]||"50%")+" center/cover url("+im+"), "+t.bg:t.bg;
   $("#cap").textContent=custom?"Your legend":t.c;$("#tname").textContent=t.n;
 }
 function buildMenu(){const m=$("#menu");m.innerHTML="";
@@ -151,13 +150,14 @@ function modal(html,setup){const b=$("#mbox");b.innerHTML=html;$("#modal").class
 $("#modal").onclick=e=>{if(e.target.id==="modal")$("#modal").classList.remove("show")};
 function save(){if(!msgs.length)return;let c=chats.find(x=>x.id===cid);
   if(!c){cid=Date.now();c={id:cid,title:msgs[0].text.slice(0,40)||"Chat",msgs:[]};chats.unshift(c)}
-  c.msgs=msgs;ls.s("gearo-chats",JSON.stringify(chats.slice(0,30)))}
+  c.msgs=msgs.map(m=>m.img?{role:m.role,text:"[Image created]"}:m);ls.s("gearo-chats",JSON.stringify(chats.slice(0,30)))}
 function draw(){chat.innerHTML="";msgs.forEach(m=>bubble(m));$("#welcome").style.display=msgs.length?"none":"";$("#cap").style.display=msgs.length?"none":"";chat.scrollTop=chat.scrollHeight}
 function bubble(m){const d=document.createElement("div");d.className="m "+(m.role==="user"?"u":"");d.textContent=m.text||"";
   if(m.svg){const im=new Image(),bl=new Blob([m.svg],{type:"image/svg+xml"});im.src=URL.createObjectURL(bl);d.append(im);
     const b=document.createElement("button");b.className="sm";b.textContent="Save image";
     b.onclick=()=>{const a=document.createElement("a");a.href=im.src;a.download="gearo-art.svg";a.click()};d.append(b)}
   if(m.src&&m.src.length){const s=document.createElement("div");s.style.cssText="margin-top:8px;font-size:12px;opacity:.9";s.append("Sources: ");m.src.forEach(u=>{if(!/^https?:/.test(u.url))return;const a=document.createElement("a");a.href=u.url;a.target="_blank";a.rel="noopener noreferrer";a.textContent=(u.title||u.url).slice(0,38);a.style.cssText="color:var(--acc);margin-right:10px";s.append(a)});d.append(s)}
+  if(m.img){const im=new Image();im.src=m.img;d.append(im);const b=document.createElement("button");b.className="sm";b.textContent="Save image";b.onclick=()=>{const a=document.createElement("a");a.href=m.img;a.download="gearo-art.jpg";a.click()};d.append(b)}
   chat.append(d);chat.scrollTop=chat.scrollHeight;return d}
 function newChat(){msgs=[];hist=[];cid=null;draw();$("#side").classList.remove("open")}
 $("#nNew").onclick=newChat;
@@ -185,10 +185,7 @@ $("#fin").onchange=e=>{[...e.target.files].forEach(f=>pend.push(f));e.target.val
 function drawFiles(){const box=$("#files");box.innerHTML="";pend.forEach((f,i)=>{const b=document.createElement("button");b.className="sm";b.textContent="📄 "+f.name.slice(0,22)+" ✕";b.onclick=()=>{pend.splice(i,1);drawFiles()};box.append(b)})}
 $("#img").onclick=()=>{imgMode=!imgMode;$("#img").classList.toggle("on",imgMode);inp.placeholder=imgMode?"Describe the image to create...":"Type your message to GEARO..."};
 
-
-const PERSONA="You are GEARO, a helpful, adventurous AI companion with a light One Piece pirate-adventure flavour. Be genuinely helpful first, keep answers concise.\n\n";
 const readText=f=>new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.onerror=()=>r("");x.readAsText(f)});
-
 const b64=f=>new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result.split(",")[1]);x.readAsDataURL(f)});
 async function send(){
   const text=inp.value.trim();if(!text&&!pend.length)return;
@@ -200,6 +197,7 @@ async function send(){
     for(const f of files){
       if(f.type.startsWith("image/")){if(f.size>3e6)throw new Error("Images must be under 3 MB.");images.push({type:f.type,data:await b64(f)})}
       else prompt+="\n\n--- File: "+f.name+" ---\n"+(await readText(f)).slice(0,20000)}
+    if(mode){try{const ri=await fetch("/api/image",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:text})});const ji=await ri.json();if(ri.ok&&ji.image){out.text="";out.img=ji.image;hist.push({role:"user",content:text},{role:"assistant",content:"[Created an image: "+text+"]"});draw();save();return}}catch(e){}}
     if(mode)prompt="Create a vivid, polished SVG illustration (viewBox 0 0 800 600, no external references, no scripts) of: "+text+"\nReturn ONLY the <svg>...</svg> markup.";
     const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:hist.concat([{role:"user",content:prompt}]),images,search:!mode})});
     const j=await r.json();if(!r.ok)throw new Error(j.error||"Request failed");
